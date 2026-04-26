@@ -67,7 +67,7 @@ static pchunk_t *resolution_list;
 static header_t header;
 
 static void process_image (FILE *, pdirectory_t *, unsigned char, unsigned char* );
-static void decompress_image_lzw (FILE *, image_t *);
+static void decompress_image_lzw (FILE *, unsigned, unsigned, image_t *, char bw);
 static void decompress_image_huffman (FILE *, unsigned char*, unsigned, unsigned, image_t *);
 static short read_code (FILE *, compress_t *);
 static void write_file (int, image_t *);
@@ -298,7 +298,7 @@ static void process_image (FILE *fp, pdirectory_t *directory, unsigned char flag
 	if (flags == 0xE)
 		decompress_image_huffman (fp, huffman_tree_data, image.width, image.height, &image);
 	else
-		decompress_image_lzw (fp, &image);
+		decompress_image_lzw (fp, image.width, image.height, &image, flags == 0x38);
 
     write_file ((int) directory->image_number, &image);
 
@@ -371,8 +371,9 @@ static void decompress_image_huffman (FILE *fp, unsigned char* tree, unsigned wi
     free(data);
 }
 
-static void decompress_image_lzw (FILE *fp, image_t *image)
+static void decompress_image_lzw (FILE *fp, unsigned width, unsigned height, image_t *image, char bw)
 {        
+    (void)height;
     int i;
     short code, old = 0, first, clear_code;
     compress_t comp;
@@ -383,6 +384,7 @@ static void decompress_image_lzw (FILE *fp, image_t *image)
     comp.sptr = 0;
     comp.tlen = CODE_SIZE + 1;
     comp.tptr = 0;
+    int x=0;
 
     for (i = 0; i < CODE_TABLE_SIZE; i++) {
         code_table[i][PREFIX] = CODE_TABLE_SIZE;
@@ -411,7 +413,23 @@ static void decompress_image_lzw (FILE *fp, image_t *image)
         while ((code = code_table[code][PREFIX]) != CODE_TABLE_SIZE);
         do {
 			unsigned char c = buffer[--i];
-            image->image[image->pixels++] = c;
+            if (bw && !image->transflag) {
+                for (unsigned char m = 0x80 ; m ; m >>= 1) {
+                    if (c & m)
+                        image->image[image->pixels++] = 2;
+                    else
+                        image->image[image->pixels++] = 3;
+                    x++;
+                    if (x>=width) {
+                        x = 0;
+                        break;
+                    }
+                }
+            }
+            else {
+                image->image[image->pixels++] = c;
+            }
+                    
 		}
         while (i > 0);
     }
